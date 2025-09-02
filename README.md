@@ -1,0 +1,1 @@
+DiceTool is a PHP/MySQL/Javascript application intended to provide convenience features for players of dice-related pen+paper games.

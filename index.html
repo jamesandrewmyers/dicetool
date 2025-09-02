@@ -1,0 +1,928 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<link rel="stylesheet" type="text/css" href="style.css">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<meta charset="UTF-8">
+		<title>DiceTool</title>
+		<script>
+			if (typeof String.prototype.endsWith !== 'function')
+			{
+				String.prototype.endsWith = function (suffix)
+				{
+					return this.indexOf(suffix, this.length - suffix.length) !== -1;
+				};
+			}
+			var secureURL = 'https://gator2010.hostgator.com/~jmyers/';
+			var dicePattern = /^([0-9]+)d([0-9]+)([\-+]?[0-9]*)$/;
+			function addRoll(rollObj)
+			{
+				if (arguments.length == 0)
+				{
+					rollObj =
+					{
+						'rollString': '',
+						'note': '',
+						'highlight': ''
+					};
+				}
+				var table = document.getElementById('rollsTableBody');
+				table.cellPadding = 2;
+				var row = table.insertRow(-1);
+				if (table.rows.length == 1)
+				{
+					row.id = 'row0';
+				}
+				else
+				{
+					row.id = 'row' + window.performance.now();
+				}
+				var cell = row.insertCell(-1);
+				cell.innerHTML = '<input id="roll' + row.id + '" type="text" size="3" maxlength="3"/> x';
+				cell = row.insertCell(-1);
+				cell.innerHTML = '<input id="dice' + row.id + '" type="text" size="10" value="' + rollObj.rollString + '"/>';
+				cell = row.insertCell(-1);
+				cell.innerHTML = `<input id="highlight${row.id}" type="text" size="10" value="${rollObj.highlight}"/>`;
+				cell = row.insertCell(-1);
+				cell.innerHTML = '<input id="note' + row.id + '" type="text" size="25" value="' + rollObj.note + '"/>';
+				cell = row.insertCell(-1);
+				cell.innerHTML = '<select id="rollLogSelect' + row.id + '"</select>';
+				cell = row.insertCell(-1);
+				cell.innerHTML = '<a class="button" onclick="roll(\'' + row.id + '\');">Roll</a>';
+				cell = row.insertCell(-1);
+				cell.innerHTML = '<a class="button" onclick="deleteRoll(\'' + row.id + '\')">Delete</a>';
+
+				buildRollLogSelect(row.id);
+			}
+			function addRollWindow()
+			{
+				var container = document.getElementById('logDiv');
+				if ( container.innerHTML == '' )
+				{
+					container.innerHTML = '<table id="logTable" width="100%" style="margin-top: 1em;border: .1em"></table>';
+				}
+				var table = document.getElementById('logTable');
+				var row = table.insertRow(-1);
+				var logCount = table.rows.length;
+				if ( logCount == 1 )
+				{
+					row.id = 'rollLog0';
+				}
+				else
+				{
+					row.id = 'rollLog' + window.performance.now();
+				}
+				var cell = row.insertCell(-1);
+				var tableHTML = `
+					<table width="100%" class="bgGradient" border="1" id="rollLogTable${row.id}">
+						<tr>
+							<td class="bgGradient" style="vertical-align: middle">
+								<div id="rollLogTitle${row.id}" style="display: inline-block;padding: .4em" contenteditable="true" onkeydown="onRollLogTitleKeyDown(event);" onblur="onRollLogTitleBlur(event);">Roll Log ${table.rows.length}</div>
+								<div style="inline-block; float: right"><a href="#" class="button" onclick="clearLog('${row.id}');">Clear</a><a href="#" class="button" onclick="deleteLog('${row.id}');">Delete</a></div>
+							</td>
+						</tr>
+						<tr>
+							<td><div contenteditable="true" id="rollLogTextarea${row.id}" onkeydown="event.preventDefault();" style="font-size: .7em;background-color: white;overflow-y: scroll;scroll;height: 20em;width: 100%;"></div></td>
+						</tr>
+					</table>
+				`;
+				cell.innerHTML = tableHTML;
+				buildRollLogSelects();
+			}
+			function deleteLog(rowId)
+			{
+				var table = document.getElementById('logTable');
+				if (table.rows.length == 1)
+				{
+					var logTitle = document.getElementById('rollLogTitle' + rowId);
+					var logTextarea = document.getElementById('rollLogTextarea' + rowId);
+					logTitle.innerHTML = 'Roll Log 1';
+					logTextarea.innerHTML = '';
+				}
+				else
+				{
+					var rowIndex = -1;
+					for (var i = 0; i < table.rows.length; i++)
+					{
+						if (table.rows[i].id == rowId)
+						{
+							rowIndex = i;
+							break;
+						}
+					}
+					if (rowIndex >= 0)
+					{
+						table.deleteRow(rowIndex);
+					}
+				}
+				buildRollLogSelects();
+			}
+			function clearLog(rowId)
+			{
+				var textarea = document.getElementById('rollLogTextarea' + rowId);
+				textarea.innerHTML = '';
+			}
+			function buildRollLogSelects()
+			{
+				var rollTable = document.getElementById('rollsTableBody');
+				for ( var j = 0; j < rollTable.rows.length; j++ )
+				{
+					var rollRowId = rollTable.rows[j].id;
+					buildRollLogSelect(rollRowId);
+				}
+			}
+			function buildRollLogSelect(rollRowId)
+			{
+				var logTable = document.getElementById('logTable');
+				var rollSelect = document.getElementById('rollLogSelect' + rollRowId);
+				var selectedLog = null;
+				if ( rollSelect.options.length > 0 )
+				{
+					selectedLog = rollSelect.options[rollSelect.selectedIndex].value;
+				}
+				rollSelect.innerHTML = '';
+				for (var i = 0; i < logTable.rows.length; i++)
+				{
+					var rowId = logTable.rows[i].id;
+					var rowTitle = document.getElementById('rollLogTitle' + rowId);
+					var option = document.createElement('option');
+					option.value = rowId;
+					option.text = rowTitle.innerHTML;
+					rollSelect.add(option);
+				}
+			}
+			function onRollLogTitleKeyDown(event)
+			{
+				if ( event.keyCode == "\r".charCodeAt(0) )
+				{
+					onRollLogTitleModify(event);
+				}
+			}
+			function onRollLogTitleBlur(event)
+			{
+				buildRollLogSelects();
+			}
+			function onRollLogTitleModify(event)
+			{
+				event.target.blur();
+				event.preventDefault();
+			}
+			function roll(rollRowId)
+			{
+				var numRollsLimit = 100;
+				var numDiceLimit = 100;
+				var sizeDiceLimit = 100;
+				var rollLogSelect = document.getElementById('rollLogSelect' + rollRowId);
+				var rollLogId = rollLogSelect.options[rollLogSelect.selectedIndex].value;
+				var rollLog = document.getElementById('rollLogTextarea' + rollLogId);
+				var diceInput = document.getElementById('dice' + rollRowId);
+				var diceStr = diceInput.value;
+				var matches = dicePattern.exec(diceStr);
+				if (matches)
+				{
+					var numRollsInput = document.getElementById('roll' + rollRowId);
+					var numRollsValue = Number(numRollsInput.value);
+
+					var numRolls = isNaN(numRollsValue) ? 1 : Math.max(numRollsValue, 1);
+					var numDice = Number(matches[1]);
+					var sizeDice = Number(matches[2]);
+					if (numRolls > numRollsLimit)
+					{
+						rollLog.innerHTML += 'Number of rolls cannot exceed ' + numRollsLimit + '.';
+						return;
+					}
+					if (numDice > numDiceLimit)
+					{
+						rollLog.innerHTML += 'Number of dice cannot exceed ' + numDiceLimit + '.';
+						return;
+					}
+					if (sizeDice > sizeDiceLimit)
+					{
+						rollLog.innerHTML += 'Size of dice cannot exceed ' + sizeDiceLimit + '.';
+						return;
+					}
+					var rollHighlight = document.getElementById('highlight' + rollRowId).value;
+					var highlights = rollHighlight.split(',');
+
+					var bonus = 0;
+					if (matches.length > 3)
+					{
+						bonus = Number(matches[3]);
+					}
+					var grandTotal = 0;
+					var grandDetail = '';
+					var fullText = rollLog.innerHTML;
+					for (var j = 0; j < numRolls; j++)
+					{
+						var total = 0;
+						var detail = '';
+						for (var i = 0; i < numDice; i++)
+						{
+							var roll = Number(1 + Math.floor(Math.random() * sizeDice));
+							if (detail.length > 0)
+							{
+								detail += ' + ';
+							}
+							var rollStr = roll;
+							for ( var highlightIndex = 0; highlightIndex < highlights.length; highlightIndex++ )
+							{
+								var highlightNumber = Number(highlights[highlightIndex]);
+								if ( roll == highlightNumber )
+								{
+									rollStr = `<div style="display: inline-block;color: red">${roll}</div>`;
+									break;
+								}
+							}
+							detail += rollStr;
+							total += Number(roll);
+						}
+						total += Number(bonus);
+						fullText += `Total: ( ${detail} ) + ${bonus} => ${total}<br/>`;
+						if (grandDetail.length > 0)
+						{
+							grandDetail += ' + ';
+						}
+						grandDetail += total;
+						grandTotal += total;
+					}
+					var grandTotalStr = grandTotal;
+					/*
+					for ( var highlightIndex = 0; highlightIndex < highlights.length; highlightIndex++ )
+					{
+						var highlightNumber = Number(highlights[highlightIndex]);
+						if ( grandTotal == highlightNumber )
+						{
+							grandTotalStr = `<div style="display: inline-block;color: red">${grandTotal}</div>`;
+						}
+					}
+					*/
+					fullText += `Grand Total: ( ${grandDetail} ) => <div style="display: inline-block;border: .1em solid black">${grandTotalStr}</div><br/>`;
+					rollLog.innerHTML = fullText;
+					rollLog.scrollTop = rollLog.scrollHeight;
+				}
+			}
+
+			function deleteRoll(rowId)
+			{
+				var table = document.getElementById('rollsTableBody');
+				if (table.rows.length == 1)
+				{
+					var rollInput = document.getElementById('roll' + rowId);
+					var diceInput = document.getElementById('dice' + rowId);
+					var noteInput = document.getElementById('note' + rowId);
+					rollInput.value = '';
+					diceInput.value = '';
+					noteInput.value = '';
+					return;
+				}
+				var rowIndex = -1;
+				for (var i = 0; i < table.rows.length; i++)
+				{
+					if (table.rows[i].id == rowId)
+					{
+						rowIndex = i;
+						break;
+					}
+				}
+				if (rowIndex >= 0)
+				{
+					table.deleteRow(rowIndex);
+				}
+			}
+
+			function saveRolls()
+			{
+				var table = document.getElementById('rollsTableBody');
+				var rollsetSelectObj = document.getElementById('rollsetSelect');
+				var rollsetId = rollsetSelectObj.options[rollsetSelectObj.selectedIndex].value;
+				var rollStrings = [];
+				for (var i = 0; i < table.rows.length; i++)
+				{
+					var rowId = table.rows[i].id;
+					var diceInput = document.getElementById('dice' + rowId);
+					var noteInput = document.getElementById('note' + rowId);
+					var rollHighlight = document.getElementById('highlight' + rowId);
+					var rollObj =
+					{
+						'rollsetId': rollsetId,
+						'rollString': diceInput.value,
+						'note': noteInput.value,
+						'highlight': rollHighlight.value
+					};
+					rollStrings.push(rollObj);
+				}
+				var json = JSON.stringify(rollStrings);
+				var http = new XMLHttpRequest();
+				var url = "saveRolls.php";
+				http.open("POST", url, true);
+
+				http.setRequestHeader("Content-type", "application/json");
+
+				http.onreadystatechange = function ()
+				{
+					if (http.readyState == 4 && http.status == 200)
+					{
+						// saved
+					}
+					else if (http.readyState == 4 && http.status == 401)
+					{
+						alert("Please sign in first.");
+						hideSessionMenu();
+						showLoginDialog();
+					}
+				};
+				http.send(json);
+
+			}
+
+			function showAuthMenu()
+			{
+				var authMenu = document.getElementById('authMenu');
+				authMenu.style.display = 'block';
+			}
+
+			function hideAuthMenu()
+			{
+				var authMenu = document.getElementById('authMenu');
+				authMenu.style.display = 'none';
+			}
+
+			function showSessionMenu()
+			{
+				var menu = document.getElementById('sessionMenu');
+				menu.style.display = 'block';
+			}
+
+			function hideSessionMenu()
+			{
+				var menu = document.getElementById('sessionMenu');
+				menu.style.display = 'none';
+			}
+
+			function hideLoginDialog()
+			{
+				document.location.href = '#close';
+			}
+
+			function showLoginDialog()
+			{
+				document.location.href = '#authDiv';
+			}
+
+			function hideCreateAccountDialog()
+			{
+				document.location.href = '#close';
+			}
+
+			function showCreateAccountDialog()
+			{
+				document.location.href = '#createAccountDiv';
+			}
+
+			function hideNewRollsetDialog()
+			{
+				document.location.href = '#close';
+			}
+
+			function handleRollsetMenuAction(input)
+			{
+				var selectedId = input.options[input.selectedIndex].id;
+				if ( selectedId == 'New' )
+				{
+					createRollset();
+				}
+				else if ( selectedId == 'Save' )
+				{
+					saveRollset();
+				}
+				else if ( selectedId == 'Delete' )
+				{
+					deleteRollset();
+				}
+				input.selectedIndex=0;
+			}
+
+			function createRollset()
+			{
+				document.location.href = '#newRollsetDiv';
+			}
+
+			function clearRolls()
+			{
+				var table = document.getElementById('rollsTableBody');
+				for (var i = table.rows.length - 1; i >= 0; i--)
+				{
+					table.deleteRow(i);
+				}
+			}
+
+			function reloadRollsSuccess(http)
+			{
+				clearRolls();
+
+				var rolls = JSON.parse(http.responseText);
+				if( rolls.length == 0 )
+				{
+					alert('No saved rolls found.');
+					addRoll();
+					return;
+				}
+
+				for (i = 0; i < rolls.length; i++)
+				{
+					addRoll(rolls[i]);
+				}
+			}
+
+			function reloadRollsFailure(http)
+			{
+				alert('Unable to load rolls for rollset.');
+			}
+
+			function reloadRolls()
+			{
+				var rollsetSelectObj = document.getElementById('rollsetSelect');
+				var rollsetIdObj =
+				{
+					'rollsetId':	rollsetSelectObj.options[rollsetSelectObj.selectedIndex].value
+				};
+				sendJSON("POST",'reloadRolls.php',rollsetIdObj,reloadRollsSuccess,reloadRollsFailure,'Reloading Rolls...');
+			}
+
+			function reloadRollsetsSuccess(http)
+			{
+				var rollsets = JSON.parse(http.responseText);
+				if (rollsets.length == 0)
+				{
+					alert('No rollsets found.');
+					return;
+				}
+				var rollsetSelectObj = document.getElementById('rollsetSelect');
+				rollsetSelectObj.innerHTML = '';
+				for (i = 0; i < rollsets.length; i++)
+				{
+					var newOption = document.createElement('option');
+					newOption.value = rollsets[i].id;
+					newOption.text = rollsets[i].name;
+					newOption.rollsetNotes = rollsets[i].notes;
+					rollsetSelectObj.add(newOption);
+				}
+				rollsetSelectObj.selectedIndex = 0;
+				onRollsetSelectChange();
+			}
+
+			function reloadRollsetsFailure(http)
+			{
+				alert('Unable to load Rollsets.');
+			}
+
+			function reloadRollsets()
+			{
+				sendJSON("GET",'reloadRollsets.php',null,reloadRollsetsSuccess,reloadRollsetsFailure,'Reloading Rollsets...');
+			}
+
+			function getInnerText(el)
+			{
+				var sel, range, innerText = "";
+				if (typeof document.selection != "undefined" && typeof document.body.createTextRange != "undefined")
+				{
+					range = document.body.createTextRange();
+					range.moveToElementText(el);
+					innerText = range.text;
+				}
+				else if (typeof window.getSelection != "undefined" && typeof document.createRange != "undefined")
+				{
+					sel = window.getSelection();
+					sel.selectAllChildren(el);
+					innerText = "" + sel;
+					sel.removeAllRanges();
+				}
+				return innerText;
+			}
+
+			function deleteRollsetSuccess(http)
+			{
+				reloadRollsets();
+			}
+
+			function deleteRollsetFailure(http)
+			{
+				alert('Unable to save Rollset.');
+			}
+			function deleteRollset()
+			{
+				var rollsetSelectObj = document.getElementById('rollsetSelect');
+				var rollsetId = rollsetSelectObj.options[rollsetSelectObj.selectedIndex].value;
+				var rollsetObj =
+				{
+					'id': rollsetId
+				};
+
+				sendJSON("POST","deleteRollset.php",rollsetObj,deleteRollsetSuccess,deleteRollsetFailure,'Deleting Rollset...');
+			}
+
+			function saveRollsetSuccess(http)
+			{
+				var rollset = JSON.parse(http.responseText);
+				var rollsetSelectObj = document.getElementById('rollsetSelect');
+				var option = rollsetSelectObj.options[rollsetSelectObj.selectedIndex];
+				option.value = rollset.id;
+				option.text = rollset.name;
+				option.rollsetNotes = rollset.notes;
+			}
+
+			function saveRollsetFailure(http)
+			{
+				alert('Unable to save Rollset.');
+			}
+			function saveRollset()
+			{
+				var rollsetSelectObj = document.getElementById('rollsetSelect');
+				var rollsetId = rollsetSelectObj.options[rollsetSelectObj.selectedIndex].value;
+				var rollsetName = rollsetSelectObj.options[rollsetSelectObj.selectedIndex].text;
+				var noteText = document.getElementById('notesTextarea').innerHTML;
+				var table = document.getElementById('rollsTableBody');
+				var rollStrings = [];
+				for (var i = 0; i < table.rows.length; i++)
+				{
+					var rowId = table.rows[i].id;
+					var diceInput = document.getElementById('dice' + rowId);
+					var noteInput = document.getElementById('note' + rowId);
+					var rollHighlight = document.getElementById('highlight' + rowId);
+					var rollObj =
+					{
+						'rollsetId': rollsetId,
+						'rollString': diceInput.value,
+						'note': noteInput.value,
+						'highlight': rollHighlight.value
+					};
+					rollStrings.push(rollObj);
+				}
+				var rollsetObj =
+				{
+					'id': rollsetId,
+					'name': rollsetName,
+					'notes': noteText,
+					'rolls': rollStrings
+				};
+
+				sendJSON("POST","saveRollset.php",rollsetObj,saveRollsetSuccess,saveRollsetFailure,'Saving Rollset...');
+			}
+
+			function sendJSON(method,url,inputObj,successHandler,failureHandler,message)
+			{
+				var http = new XMLHttpRequest();
+				http.open(method, url, true);
+
+				http.setRequestHeader("Content-type", "application/json");
+
+				http.onreadystatechange = function ()
+				{
+					if ( http.readyState == 4 )
+					{
+						hideScreenMask();
+						if (http.status == 401)
+						{
+							alert("Please sign in.");
+							hideSessionMenu();
+							showLoginDialog();
+						}
+						else if ( successHandler && http.status == 200)
+						{
+							successHandler(http);
+						}
+						else if ( failureHandler )
+						{
+							failureHandler(http);
+						}
+					}
+				};
+				showScreenMask(message);
+				if ( inputObj )
+				{
+					http.send(JSON.stringify(inputObj));
+				}
+				else
+				{
+					http.send();
+				}
+			}
+			function showScreenMask(message)
+			{
+				toggleScreenMask(message);
+			}
+			function hideScreenMask()
+			{
+				toggleScreenMask();
+			}
+			function toggleScreenMask(message)
+			{
+				var screenMask = document.getElementById('screenMask');
+				if ( message )
+				{
+					var screenMaskText = document.getElementById('screenMaskText');
+					screenMaskText.innerHTML = message;
+					screenMask.style.display = 'block';
+				}
+				else
+				{
+					screenMask.style.display = 'none';
+				}
+			}
+
+			function checkAuth()
+			{
+				var http = new XMLHttpRequest();
+				var url = "login.php";
+				var params = "";
+				http.open("GET", url, true);
+
+				http.onreadystatechange = function ()
+				{
+					if (http.readyState == 4 && http.status == 200)
+					{
+						hideAuthMenu();
+						showSessionMenu();
+						reloadRollsets();
+					}
+					else if (http.readyState == 4)
+					{
+						clearUI();
+						showAuthMenu();
+						showLoginDialog();
+					}
+				};
+				http.send(params);
+			}
+
+			function login()
+			{
+				var usernameInput = document.getElementById('username');
+				var passwordInput = document.getElementById('password');
+				var username = usernameInput.value;
+				var password = passwordInput.value;
+				var http = new XMLHttpRequest();
+				var url = "login.php";
+				var params = "username=" + username + "&password=" + password;
+				http.open("POST", url, true);
+
+				http.setRequestHeader("Content-type", "application/x-www-form-urlencoded");
+
+				http.onreadystatechange = function ()
+				{
+					if (http.readyState == 4 && http.status == 200)
+					{
+						hideLoginDialog();
+						hideAuthMenu();
+						showSessionMenu();
+						reloadRollsets();
+					}
+					else if (http.readyState == 4)
+					{
+						alert('Login failed.');
+						showAuthMenu();
+						showLoginDialog();
+					}
+				};
+				http.send(params);
+			}
+
+			function logout()
+			{
+				var http = new XMLHttpRequest();
+				var url = "logout.php";
+				http.open("GET", url, true);
+
+				http.onreadystatechange = function ()
+				{
+					if (http.readyState == 4 && http.status == 200)
+					{
+						showAuthMenu();
+						hideSessionMenu();
+					}
+					else if (http.readyState == 4)
+					{
+						showSessionMenu();
+						hideSessionMenu();
+						hideLoginDialog();
+					}
+				};
+				http.send();
+			}
+
+			function clearRollsetNotes()
+			{
+				document.getElementById('notesTextarea').innerHTML = '';
+			}
+
+			function clearUI()
+			{
+				hideSessionMenu();
+				clearRolls();
+				clearRollsetNotes();
+			}
+
+			function createAccount()
+			{
+				var usernameInput = document.getElementById('accountEmail');
+				var passwordInput = document.getElementById('accountPassword');
+				var passwordInput2 = document.getElementById('accountPasswordConfirm');
+
+				var username = usernameInput.value;
+				var password = passwordInput.value;
+				var password2 = passwordInput2.value;
+
+				if (password !== password2)
+				{
+					alert('The passwords do not match.');
+					return;
+				}
+
+				var http = new XMLHttpRequest();
+				var url = "createAccount.php";
+				var params = "username=" + username + "&password=" + password;
+				http.open("POST", url, true);
+
+				http.setRequestHeader("Content-type", "application/x-www-form-urlencoded");
+
+				http.onreadystatechange = function ()
+				{
+					if (http.readyState == 4 && http.status == 200)
+					{
+						hideCreateAccountDialog();
+						hideAuthMenu();
+					}
+					else if (http.readyState == 4)
+					{
+						alert('Account creation failed.');
+						showCreateAccountDialog();
+						showAuthMenu();
+					}
+				};
+				http.send(params);
+			}
+
+			function createNewRollset()
+			{
+				var newRollsetNameInput = document.getElementById('newRollsetName');
+				var newRollsetName = newRollsetNameInput.value;
+				var rollsetSelectObj = document.getElementById('rollsetSelect');
+				clearRolls();
+				var newOption = document.createElement('option');
+				newOption.value = "";
+				newOption.text = newRollsetName;
+				newOption.rollsetNotes = "";
+				rollsetSelectObj.add(newOption);
+				rollsetSelectObj.selectedIndex = rollsetSelectObj.options.length-1;
+				saveRollset();
+				reloadRolls();
+			}
+
+			function resetTextInput(textInput)
+			{
+				if (textInput.value == 'XdY+Z')
+				{
+					textInput.value = "";
+					var tempInput = document.createElement("input");
+					textInput.style.color = tempInput.style.color;
+					tempInput.remove();
+				}
+			}
+
+			function onRollsetSelectChange()
+			{
+				var rollsetSelectObj = document.getElementById('rollsetSelect');
+				document.getElementById('notesTextarea').innerHTML = rollsetSelectObj.options[rollsetSelectObj.selectedIndex].rollsetNotes;
+				reloadRolls();
+			}
+		</script>
+	</head>
+
+
+	<body style="background-image: url('background.jpg')" onload="addRollWindow();addRoll();checkAuth()">
+		<div id="newRollsetDiv" class="modalDialog">
+			<div width="100%">
+				<div style="font-family: Helvetica, serif; font-weight: bold; display: inline-block; padding: .5em .3em .3em;">
+					New Rollset&nbsp;<a href="#" class="close" style="float: right" onclick="hideNewRollsetDialog()">X</a>
+					<div style="height: 1em"></div>
+					<input style="padding-bottom: .2em" id="newRollsetName" type="text" name="newRollsetName" value="name" onfocus="this.value='';"/>
+					<div style="height: .5em"></div>
+					<a class="button" style="float: left" onclick="hideNewRollsetDialog()">Cancel</a><a class="button" style="float: right" onclick="createNewRollset()">Create</a>
+				</div>
+			</div>
+		</div>
+		<div id="authDiv" class="modalDialog">
+			<div width="100%">
+				<div style="font-family: Helvetica, serif; font-weight: bold; display: inline-block; padding: .5em .3em .3em;">
+					Login&nbsp;<a href="#" class="close" style="float: right" onclick="hideLoginDialog()">X</a>
+					<div style="height: 1em"></div>
+					<input style="padding-bottom: .2em" id="username" type="text" name="username" value="username" onfocus="this.value='';"/>
+					<div style="height: .2em"></div>
+					<input style="margin-bottom: .3em" id="password" type="password" name="password" value="password" onfocus="this.value=''" onkeypress="if ( event.keyCode == 13 ) { login(); }"/>
+					<div style="height: .5em"></div>
+					<a class="button" style="float: left" onclick="hideLoginDialog()">Cancel</a><a class="button" style="float: right" onclick="login()">Login</a>
+				</div>
+			</div>
+		</div>
+		<div id="createAccountDiv" class="modalDialog">
+			<div width="100%">
+				<div style="display: inline-block; padding: .3em;">
+					Create Account<a href="#" class="close" style="float: right" onclick="hideLoginDialog()">X</a>
+					<div style="height: 1em"></div>
+					<input style="padding-bottom: .2em" id="accountEmail" type="text" name="username" value="username" onfocus="this.value='';"/>
+					<div style="height: .1em"></div>
+					<input id="accountPassword" type="password" name="password" value="password" onfocus="this.value=''" onkeypress="if ( event.keyCode == 13 ) { createAccount(); }"/>
+					<div style="height: .1em"></div>
+					<input id="accountPasswordConfirm" type="password" name="passwordConfirm" value="wordpass" onfocus="this.value=''" onkeypress="if ( event.keyCode == 13 ) { createAccount(); }"/>
+					<div style="height: .5em"></div>
+					<input type="button" value="Cancel" style="float: left" onclick="hideCreateAccountDialog()"/><input type="button" value="Create" style="float: right" onclick="createAccount()"/>
+				</div>
+			</div>
+		</div>
+		<div class="screenMask" id="screenMask">
+			<div width="100%">
+				<div style="display: inline-block; padding: .3em;" id="screenMaskText"></div>
+			</div>
+		</div>
+		<div class="header" id="headerDiv">
+			<h1 style="text-align: center;font-family: fancyFont">Dice Tool</h1>
+		</div>
+		<div class="main" id="mainDiv" style="width: 100%;overflow: hidden">
+			<div>
+				<div id="rollsDiv" style="text-align: left;float: left;width: 50%;overflow: hidden;white-space: nowrap">
+					<div style="display: inline-block;overflow: hidden;whtie-space: nowrap">
+						<select class="custom-dropdown" id="rollsetMenu" onchange="handleRollsetMenuAction(this);">
+							<option id="">Rollset &#x25BE</option>
+							<option id="New">New</option>
+							<option id="Save">Save</option>
+							<option id="Rename">Rename</option>
+							<option id="Delete">Delete</option>
+						</select>
+						<a class="button noselect" id="addRollButton" onclick="addRoll()">Add Roll</a>
+						<!--
+						<select class="custom-dropdown" id="rollMenu" onchange="addRoll();this.selectedIndex=0;">
+							<option>Roll &#x25BE</option>
+							<option>New</option>
+						</select>
+						-->
+						<!--
+						<a class="button noselect" id="newRollsetButton" onclick="showNewRollsetDialog()">New Rollset</a>
+						<a class="button noselect" id="addRollButton" onclick="addRoll()">Add Roll</a>
+						<a class="button" onclick="saveRolls()">Save Rolls</a>
+						<a class="button" onclick="reloadRolls()">Reload Rolls</a>
+						-->
+					</div>
+					<br/>
+					<div style="display: inline-block;margin-top: 1em;height: auto;overflow: auto">
+						<span class="diceToolText" style="display: inline-block;padding: .4em;vertical-align: middle">Rollset&nbsp;<select id="rollsetSelect" class="diceToolText" onchange="onRollsetSelectChange();"></select></span>
+						<br/>
+						<table class="bgGradient" id="rollsTable" border="1" style="margin-top: 1em">
+							<thead>
+								<tr>
+									<th class="bgGradient">Repeat</th>
+									<th class="bgGradient">Dice</th>
+									<th class="bgGradient">Highlight</th>
+									<th class="bgGradient">Note</th>
+									<th class="bgGradient">Log</th>
+									<th  class="bgGradient" colspan="2">Actions</th>
+								</tr>
+							</thead>
+							<tbody id="rollsTableBody">
+							</tbody>
+							<tfoot>
+								<tr>
+									<td colspan="7" style="background-color: #eeeadd"></td>
+								</tr>
+							</tfoot>
+						</table>
+					</div>
+					<div id="notesDiv" style="display: inline-block;margin-top: 1em;width: 95%;height: auto;overflow: auto;float: left">
+						<table width="100%" class="bgGradient" border="1" id="notesTable">
+							<tr>
+								<td class="bgGradient" style="vertical-align: middle">
+									<div style="display: inline-block;padding: .4em">Rollset Notes</div>
+									<div style="display: inline-block; float: right"></div>
+								</td>
+							</tr>
+							<tr>
+								<td><div contenteditable="true" id="notesTextarea" style="font-size: .7em;background-color: white;overflow-y: scroll;scroll;height: 20em;width: 100%;"></div></td>
+							</tr>
+						</table>
+					</div>
+				</div>
+				<div id="logDivPanel" style="width:50%;overflow: visible;float: left">
+					<a class="button" id="addRollWindowButton" onclick="addRollWindow()">Add Log</a>
+					<div id="authMenu" style="float: right; display: none">
+						<a class="button" id="createAccountButton" onclick="showCreateAccountDialog()">Create Account</a>
+						<a class="button" id="signInButton" onclick="checkAuth()">Sign In</a>
+					</div>
+					<div id="sessionMenu" style="float: right; display: none">
+						<a class="button" id="signOutButton" onclick="logout()">Sign Out</a>
+					</div>
+					<br/>
+					<div id="logDiv" style="display: inline-block;margin-top: 1em;height: auto;width:100%;overflow: visible;float: left"></div>
+				</div>
+			</div>
+		</div>
+	</body>
+</html>
